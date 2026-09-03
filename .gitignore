@@ -1,0 +1,13 @@
+build/
+bin/
+obj/
+
+*.o
+*.exe
+*.out
+
+.vscode/
+.idea/
+
+.env
+.DS_Store
