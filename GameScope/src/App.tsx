@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import Dashboard from "./components/Dashboard";
 import Analytics from "./components/Analytics";
 import Reviews from "./components/Reviews";
+import Issues from "./components/Issues";
 import Intro from "./components/Intro";
 
 import "./App.css";
 
-type Page = "dashboard" | "reviews" | "analytics";
+type Page = "dashboard" | "reviews" | "issues" | "analytics";
 
 function App() {
   // ==================================================
@@ -151,6 +152,17 @@ function App() {
               onLogoClick={handleLogoClick}
               analyzed={analyzed}
               analyzedAppId={analyzedAppId}
+            />
+          )}
+          {currentPage === "issues" && (
+            <Issues
+              darkMode={darkMode}
+              setDarkMode={setDarkMode}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              analyzed={analyzed}
+              analyzedAppId={analyzedAppId}
+              onLogoClick={handleLogoClick}
             />
           )}
         </>

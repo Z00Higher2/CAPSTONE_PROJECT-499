@@ -5,11 +5,11 @@ interface NavbarProps {
   darkMode: boolean;
   setDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
 
-  currentPage: "dashboard" | "reviews" | "analytics";
+  currentPage: "dashboard" | "issues" | "analytics" | "reviews";
 
   setCurrentPage: React.Dispatch<
     React.SetStateAction<
-      "dashboard" | "reviews" | "analytics"
+      "dashboard" | "issues" | "analytics" | "reviews"
     >
   >;
 
@@ -119,32 +119,28 @@ function Navbar({
 
         {/* ISSUES PLACEHOLDER */}
 
-        <button
-          type="button"
-          className="nav-item"
-          onClick={() => {
-            // Issues page can be added later.
-          }}
-        >
-          <span className="nav-icon">
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path d="M12 3l9 18H3L12 3z" />
-              <path d="M12 9v5" />
-              <circle
-                cx="12"
-                cy="17"
-                r=".7"
-              />
-            </svg>
-          </span>
+      
+      {/* ISSUES */}
 
-          <span className="nav-text">
-            Issues
-          </span>
-        </button>
+      <button
+        type="button"
+        className={`nav-item ${
+          currentPage === "issues" ? "active" : ""
+        }`}
+        onClick={() => setCurrentPage("issues")}
+        aria-label="Go to Issues page"
+      >
+        <span className="nav-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3l9 18H3L12 3z" />
+            <path d="M12 9v5" />
+            <circle cx="12" cy="17" r=".7" />
+          </svg>
+        </span>
+
+        <span className="nav-text">Issues</span>
+      </button>
+
 
         {/* ANALYTICS */}
 
