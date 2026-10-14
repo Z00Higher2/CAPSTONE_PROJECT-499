@@ -6,10 +6,10 @@ import "./Issues.css";
 interface IssuesProps {
   darkMode: boolean;
   setDarkMode: React.Dispatch<React.SetStateAction<boolean>>;
-  currentPage: "dashboard" | "issues" | "analytics" | "reviews";
+  currentPage: "dashboard" | "issues" | "analytics" | "reviews" | "settings";
   setCurrentPage: React.Dispatch<
     React.SetStateAction<
-      "dashboard" | "issues" | "analytics" | "reviews"
+      "dashboard" | "issues" | "analytics" | "reviews" | "settings"
     >
   >;
   onLogoClick: () => void;
@@ -18,41 +18,13 @@ interface IssuesProps {
 }
 
 type Priority = "Critical" | "High" | "Medium" | "Low";
-
 type IssueStatus =
   | "Detected"
   | "Investigating"
   | "In Progress"
   | "Resolved";
-
 type Sentiment = "positive" | "negative";
 
-/**
- * ============================================================
- * BACKEND HANDOFF: ISSUE DATA CONTRACT
- * ============================================================
- *
- * This is the data shape currently expected by the Issues UI.
- * The backend response should match this interface, or the
- * frontend should transform the response before displaying it.
- *
- * Proposed endpoint:
- * GET /api/games/{appId}/issues
- *
- * Suggested field meanings:
- * - name: issue category identified from player reviews.
- * - mentions: number of reviews associated with this category.
- * - negative / positive: sentiment counts for those reviews.
- * - helpfulVotes: helpful-vote metric for associated reviews.
- * - description: summary of the issue.
- * - priority: priority assigned by agreed analysis rules.
- * - examples: representative review text and its sentiment.
- * - trend: historical activity values for the trend chart.
- *
- * This is a proposed frontend contract, not an existing API.
- * Agree on field names and calculations with the backend
- * developer before implementing the endpoint.
- */
 interface Issue {
   name: string;
   mentions: number;
@@ -69,19 +41,17 @@ interface Issue {
 }
 
 /**
- * BACKEND TODO: REPLACE THIS DEMO ARRAY WITH API DATA
+ * BACKEND CONTRACT
  *
- * These values are hardcoded sample data for UI development.
- * Once the backend is available, fetch issues for analyzedAppId
- * from GET /api/games/{appId}/issues and store the response in
- * React state instead of relying on this array.
+ * Proposed endpoint:
+ * GET /api/games/{appId}/issues
  *
- * The backend should derive issue counts and sentiment from
- * reviews stored in the database. Do not present these sample
- * values as actual Steam statistics.
+ * Replace demoIssues with API data once the backend is ready.
+ * The backend should calculate these values from collected reviews.
+ * These example values are illustrative, not live Steam statistics.
  *
- * Keeping demoIssues as a fallback during development is fine,
- * provided the UI continues to identify the data as illustrative.
+ * Consider returning a stable issue ID from the backend before
+ * implementing persistent status tracking.
  */
 const demoIssues: Issue[] = [
   {
@@ -92,7 +62,7 @@ const demoIssues: Issue[] = [
     helpfulVotes: 14.2,
     priority: "Critical",
     description:
-      "Players frequently mention performance problems that affect gameplay, including frame drops and inconsistent performance.",
+      "Players frequently report frame drops, inconsistent frame rates, and performance problems that can affect gameplay.",
     examples: [
       {
         type: "negative",
@@ -117,7 +87,7 @@ const demoIssues: Issue[] = [
     helpfulVotes: 11.8,
     priority: "High",
     description:
-      "Players discuss inventory organization, item management, and difficulties managing large amounts of equipment and materials.",
+      "Players discuss inventory organization, item management, and difficulties managing equipment and materials.",
     examples: [
       {
         type: "negative",
@@ -187,22 +157,15 @@ const demoIssues: Issue[] = [
 ];
 
 /**
- * BACKEND NOTE: These are initial demonstration statuses.
+ * DEMO WORKFLOW STATE
  *
- * They currently exist only in frontend memory. If statuses should
- * survive refreshes or be shared among developers, the backend
- * should read and write them in SQL using a stable issue ID and
- * the selected game's appId.
+ * These statuses are stored in React state only.
  *
- * A proposed status endpoint is:
+ * Proposed persistence endpoint:
  * PATCH /api/games/{appId}/issues/{issueId}/status
  *
- * Example request body:
- * { "status": "Investigating" }
- *
- * Coordinate the final database schema and API contract with
- * the backend developer. Do not use issue name alone as a permanent
- * identifier if the backend can provide a stable issue ID.
+ * Load and save statuses through the backend when SQL integration
+ * is available. Associate statuses with a stable issue ID and game.
  */
 const initialStatuses: Record<string, IssueStatus> = {
   Performance: "Investigating",
@@ -210,6 +173,55 @@ const initialStatuses: Record<string, IssueStatus> = {
   Bugs: "In Progress",
   Multiplayer: "Detected",
 };
+
+const priorities: Priority[] = [
+  "Critical",
+  "High",
+  "Medium",
+  "Low",
+];
+
+const statusesList: IssueStatus[] = [
+  "Detected",
+  "Investigating",
+  "In Progress",
+  "Resolved",
+];
+
+const trendLabels = ["P1", "P2", "P3", "P4", "P5", "P6", "P7"];
+
+function getNegativeRate(issue: Issue): number {
+  if (issue.mentions <= 0) return 0;
+  return Math.round((issue.negative / issue.mentions) * 100);
+}
+
+function getPositiveRate(issue: Issue): number {
+  if (issue.mentions <= 0) return 0;
+  return Math.round((issue.positive / issue.mentions) * 100);
+}
+
+function getPriorityRank(priority: Priority): number {
+  return priorities.indexOf(priority);
+}
+
+function getStatusClass(status: IssueStatus): string {
+  return status.toLowerCase().replace(/\s+/g, "-");
+}
+
+function getRecommendation(name: string): string {
+  switch (name) {
+    case "Performance":
+      return "Investigate frame-rate drops and compare player reports against recent game updates.";
+    case "Inventory":
+      return "Review inventory sorting, filtering, and item-management workflows.";
+    case "Bugs":
+      return "Group similar bug reports and investigate reproducible gameplay problems.";
+    case "Multiplayer":
+      return "Examine connection stability and matchmaking feedback across player reports.";
+    default:
+      return "Review representative player feedback and investigate the most frequently reported problems.";
+  }
+}
 
 function Issues({
   darkMode,
@@ -229,36 +241,17 @@ function Issues({
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [sortBy, setSortBy] = useState("mentions");
 
-  /**
-   * BACKEND TODO: PERSIST STATUS CHANGES
-   *
-   * For now, changing a status only updates this component's
-   * React state; a page reload resets it to initialStatuses.
-   *
-   * Once the API is implemented:
-   * 1. Send the selected status to the backend.
-   * 2. Let the backend validate and save it to SQL.
-   * 3. Update this state after a successful response.
-   * 4. Show an error if saving fails.
-   *
-   * When loading issue data, also load saved statuses from the API.
-   */
+  // Demo only: changes currently disappear when the page is reloaded.
   const [statuses, setStatuses] =
     useState<Record<string, IssueStatus>>(initialStatuses);
 
   /**
-   * FRONTEND FILTERING AND SORTING
+   * FILTER AND SORT
    *
-   * This currently filters the local demoIssues array.
-   * Search, priority, status, category, and sorting can remain
-   * client-side if the API returns a small set of issues.
+   * Client-side filtering is appropriate for this small demo dataset.
+   * Larger datasets may benefit from backend filtering and pagination.
    *
-   * For larger datasets, the backend could support query parameters
-   * such as ?search=performance&priority=High&status=Detected.
-   * These are suggestions only; no such endpoint is implemented here.
-   *
-   * If filtering moves server-side, replace demoIssues with the
-   * fetched data and keep the filter behavior consistent.
+   * When the API is ready, replace demoIssues with fetched issue state.
    */
   const filteredIssues = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -293,29 +286,20 @@ function Issues({
         );
       })
       .sort((a, b) => {
-        if (sortBy === "mentions") {
-          return b.mentions - a.mentions;
+        switch (sortBy) {
+          case "negative":
+            return getNegativeRate(b) - getNegativeRate(a);
+          case "priority":
+            return (
+              getPriorityRank(a.priority) -
+              getPriorityRank(b.priority)
+            );
+          case "name":
+            return a.name.localeCompare(b.name);
+          case "mentions":
+          default:
+            return b.mentions - a.mentions;
         }
-
-        if (sortBy === "negative") {
-          return (
-            b.negative / b.mentions -
-            a.negative / a.mentions
-          );
-        }
-
-        if (sortBy === "priority") {
-          const rank: Record<Priority, number> = {
-            Critical: 0,
-            High: 1,
-            Medium: 2,
-            Low: 3,
-          };
-
-          return rank[a.priority] - rank[b.priority];
-        }
-
-        return a.name.localeCompare(b.name);
       });
   }, [
     searchQuery,
@@ -327,28 +311,17 @@ function Issues({
   ]);
 
   /**
-   * BACKEND TODO: SELECTED ISSUE
+   * SELECTION FIX
    *
-   * This looks up the selected issue in the demo array.
-   * When issues come from the API, look up the selected issue in
-   * the fetched issue state instead. If issues have stable IDs,
-   * store the selected issue ID rather than its display name.
+   * If a filter hides the currently selected issue, display the first
+   * matching issue instead. If nothing matches, show an empty state.
+   * This prevents details from displaying an issue absent from the list.
    */
   const selectedIssue =
-    demoIssues.find((issue) => issue.name === selectedIssueName) ??
-    demoIssues[0];
+    filteredIssues.find(
+      (issue) => issue.name === selectedIssueName
+    ) ?? filteredIssues[0] ?? null;
 
-  /**
-   * SUMMARY METRICS
-   *
-   * These totals are calculated from demoIssues. When live issue
-   * data is loaded, calculate them from the fetched records or
-   * use summary metrics returned by the backend.
-   *
-   * Confirm with the backend developer whether "mentions" means
-   * unique reviews or total category mentions. A single review may
-   * mention more than one issue, so category totals may overlap.
-   */
   const totalMentions = demoIssues.reduce(
     (total, issue) => total + issue.mentions,
     0
@@ -359,9 +332,10 @@ function Issues({
     0
   );
 
-  const negativePercentage = Math.round(
-    (totalNegative / totalMentions) * 100
-  );
+  const negativePercentage =
+    totalMentions > 0
+      ? Math.round((totalNegative / totalMentions) * 100)
+      : 0;
 
   const highPriorityCount = demoIssues.filter(
     (issue) =>
@@ -373,12 +347,15 @@ function Issues({
     (issue) => statuses[issue.name] === "Resolved"
   ).length;
 
-  const selectedStatus = statuses[selectedIssue.name] ?? "Detected";
-
-  const changeStatus = (name: string, status: IssueStatus) => {
-    // BACKEND TODO: Send this change to the status API before
-    // treating it as saved. This handler currently updates local
-    // state only and does not persist anything to the database.
+  const changeStatus = (
+    name: string,
+    status: IssueStatus
+  ) => {
+    /**
+     * BACKEND TODO:
+     * Persist the status before treating it as saved.
+     * Handle failed API requests and restore the previous value if needed.
+     */
     setStatuses((previous) => ({
       ...previous,
       [name]: status,
@@ -406,7 +383,6 @@ function Issues({
       />
 
       <main className="issues-main">
-        {/* PAGE HEADER */}
         <section className="issues-header">
           <span className="issues-label">
             <span className="issues-live-dot" />
@@ -423,9 +399,14 @@ function Issues({
               </p>
             </div>
 
-            <div className="issues-analysis-badge">
+            <div
+              className={`issues-analysis-badge ${
+                analyzed ? "analysis-selected" : "analysis-demo"
+              }`}
+            >
               <span className="issues-badge-dot" />
               {analyzed ? "ANALYSIS SELECTED" : "DEMO ANALYSIS"}
+
               {analyzed && analyzedAppId && (
                 <small>App ID: {analyzedAppId}</small>
               )}
@@ -433,38 +414,38 @@ function Issues({
           </div>
         </section>
 
-        {/* SUMMARY CARDS */}
-        <section className="issues-stats">
+        {/* SUMMARY */}
+        <section className="issues-stats" aria-label="Issue summary">
           <div className="issues-stat-card stat-purple">
-            <span className="stat-icon">◎</span>
+            <span className="stat-icon" aria-hidden="true">◎</span>
             <span className="stat-label">ISSUE CATEGORIES</span>
             <strong>{demoIssues.length}</strong>
-            <small>Recurring topics identified</small>
+            <small>Categories in this view</small>
           </div>
 
           <div className="issues-stat-card stat-blue">
-            <span className="stat-icon">▤</span>
+            <span className="stat-icon" aria-hidden="true">▤</span>
             <span className="stat-label">ISSUE MENTIONS</span>
             <strong>{totalMentions.toLocaleString()}</strong>
-            <small>Across tracked categories</small>
+            <small>Mentions across categories</small>
           </div>
 
           <div className="issues-stat-card stat-red">
-            <span className="stat-icon">↗</span>
+            <span className="stat-icon" aria-hidden="true">↗</span>
             <span className="stat-label">NEGATIVE ASSOCIATION</span>
             <strong>{negativePercentage}%</strong>
-            <small>Negative issue mentions</small>
+            <small>Negative mentions / all mentions</small>
           </div>
 
           <div className="issues-stat-card stat-amber">
-            <span className="stat-icon">⚑</span>
+            <span className="stat-icon" aria-hidden="true">⚑</span>
             <span className="stat-label">HIGH PRIORITY</span>
             <strong>{highPriorityCount}</strong>
             <small>Critical or high-priority categories</small>
           </div>
         </section>
 
-        {/* FILTERS AND ISSUE LIST */}
+        {/* ISSUE BROWSER */}
         <section className="issues-card issues-browser">
           <div className="issues-card-header">
             <div>
@@ -473,7 +454,7 @@ function Issues({
               </span>
               <h2>Detected Issues</h2>
               <p className="issues-section-subtitle">
-                Select an issue to inspect its evidence and update its status.
+                Search, prioritize, and inspect recurring feedback.
               </p>
             </div>
 
@@ -489,8 +470,10 @@ function Issues({
                 type="search"
                 placeholder="Search issues or review text..."
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                aria-label="Search issues"
+                onChange={(event) =>
+                  setSearchQuery(event.target.value)
+                }
+                aria-label="Search issues or review text"
               />
             </label>
 
@@ -501,12 +484,14 @@ function Issues({
                 onChange={(event) =>
                   setPriorityFilter(event.target.value)
                 }
+                aria-label="Filter by priority"
               >
                 <option value="All">All priorities</option>
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
+                {priorities.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {priority}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -517,12 +502,14 @@ function Issues({
                 onChange={(event) =>
                   setStatusFilter(event.target.value)
                 }
+                aria-label="Filter by status"
               >
                 <option value="All">All statuses</option>
-                <option value="Detected">Detected</option>
-                <option value="Investigating">Investigating</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Resolved">Resolved</option>
+                {statusesList.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -533,6 +520,7 @@ function Issues({
                 onChange={(event) =>
                   setCategoryFilter(event.target.value)
                 }
+                aria-label="Filter by category"
               >
                 <option value="All">All categories</option>
                 {demoIssues.map((issue) => (
@@ -548,9 +536,10 @@ function Issues({
               <select
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value)}
+                aria-label="Sort issues"
               >
                 <option value="mentions">Most mentions</option>
-                <option value="negative">Most negative</option>
+                <option value="negative">Highest negative rate</option>
                 <option value="priority">Highest priority</option>
                 <option value="name">Name A–Z</option>
               </select>
@@ -565,27 +554,27 @@ function Issues({
             </button>
           </div>
 
-          <div className="issues-list">
+          <div className="issues-list" aria-live="polite">
             {filteredIssues.map((issue) => {
-              const negativeRate = Math.round(
-                (issue.negative / issue.mentions) * 100
+              const negativeRate = getNegativeRate(issue);
+              const mentionRate = Math.min(
+                100,
+                Math.round(
+                  (issue.mentions / demoIssues[0].mentions) * 100
+                )
               );
-
-              const mentionRate = Math.round(
-                (issue.mentions / demoIssues[0].mentions) * 100
-              );
-
               const status = statuses[issue.name] ?? "Detected";
+              const isSelected = selectedIssue?.name === issue.name;
 
               return (
                 <button
                   type="button"
                   className={`issue-row ${
-                    selectedIssue.name === issue.name ? "selected" : ""
+                    isSelected ? "selected" : ""
                   }`}
                   key={issue.name}
                   onClick={() => setSelectedIssueName(issue.name)}
-                  aria-pressed={selectedIssue.name === issue.name}
+                  aria-pressed={isSelected}
                 >
                   <div className="issue-row-top">
                     <div className="issue-row-title">
@@ -603,9 +592,7 @@ function Issues({
                       </span>
 
                       <span
-                        className={`status-badge status-${status
-                          .toLowerCase()
-                          .replace(/\s+/g, "-")}`}
+                        className={`status-badge status-${getStatusClass(status)}`}
                       >
                         {status}
                       </span>
@@ -613,7 +600,14 @@ function Issues({
                   </div>
 
                   <div className="issue-row-bottom">
-                    <div className="issue-progress">
+                    <div
+                      className="issue-progress"
+                      role="progressbar"
+                      aria-label={`${issue.name} mentions relative to the most-mentioned category`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={mentionRate}
+                    >
                       <div
                         className="issue-progress-fill"
                         style={{ width: `${mentionRate}%` }}
@@ -631,7 +625,7 @@ function Issues({
 
             {filteredIssues.length === 0 && (
               <div className="issues-empty-state">
-                <span>⌕</span>
+                <span aria-hidden="true">⌕</span>
                 <h3>No matching issues</h3>
                 <p>
                   Try another search term or remove some filters.
@@ -648,272 +642,270 @@ function Issues({
           </div>
         </section>
 
-        {/* SELECTED ISSUE DETAILS */}
-        <section className="issue-detail-grid">
-          <div className="issues-card issue-detail-card">
-            <div className="issues-card-header">
-              <div>
-                <span className="issues-card-label">
-                  ISSUE BREAKDOWN
-                </span>
-                <h2>{selectedIssue.name}</h2>
-              </div>
-
-              <span
-                className={`priority-badge priority-${selectedIssue.priority.toLowerCase()}`}
-              >
-                {selectedIssue.priority} priority
-              </span>
-            </div>
-
-            <p className="issue-description">
-              {selectedIssue.description}
-            </p>
-
-            <div className="issue-status-editor">
-              <label htmlFor="issue-status-select">
-                Issue status
-              </label>
-
-              <select
-                id="issue-status-select"
-                value={selectedStatus}
-                onChange={(event) =>
-                  changeStatus(
-                    selectedIssue.name,
-                    event.target.value as IssueStatus
-                  )
-                }
-              >
-                <option value="Detected">Detected</option>
-                <option value="Investigating">Investigating</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Resolved">Resolved</option>
-              </select>
-
-              <span className="issues-status-note">
-                Demo only · status is not saved to the database yet
-              </span>
-            </div>
-
-            <div className="issue-detail-stats">
-              <div>
-                <span>MENTIONS</span>
-                <strong>
-                  {selectedIssue.mentions.toLocaleString()}
-                </strong>
-              </div>
-
-              <div>
-                <span>NEGATIVE</span>
-                <strong>
-                  {Math.round(
-                    (selectedIssue.negative /
-                      selectedIssue.mentions) *
-                      100
-                  )}
-                  %
-                </strong>
-              </div>
-
-              <div>
-                <span>POSITIVE</span>
-                <strong>
-                  {Math.round(
-                    (selectedIssue.positive /
-                      selectedIssue.mentions) *
-                      100
-                  )}
-                  %
-                </strong>
-              </div>
-
-              <div>
-                <span>AVG. HELPFUL VOTES</span>
-                <strong>{selectedIssue.helpfulVotes}</strong>
-              </div>
-            </div>
-
-            <div className="issue-sentiment">
-              <div className="sentiment-bar">
-                <div
-                  className="sentiment-negative"
-                  style={{
-                    width: `${
-                      (selectedIssue.negative /
-                        selectedIssue.mentions) *
-                      100
-                    }%`,
-                  }}
-                />
-
-                <div
-                  className="sentiment-positive"
-                  style={{
-                    width: `${
-                      (selectedIssue.positive /
-                        selectedIssue.mentions) *
-                      100
-                    }%`,
-                  }}
-                />
-              </div>
-
-              <div className="sentiment-legend">
-                <span>
-                  <i className="legend-dot negative-dot" />
-                  Negative feedback
-                </span>
-                <span>
-                  <i className="legend-dot positive-dot" />
-                  Positive feedback
-                </span>
-              </div>
-            </div>
-
-            <div className="issues-recommendation">
-              <span className="recommendation-icon">✦</span>
-              <div>
-                <strong>Suggested next step</strong>
-                <p>
-                  {selectedIssue.name === "Performance"
-                    ? "Investigate frame-rate drops and compare player reports against recent game updates."
-                    : selectedIssue.name === "Inventory"
-                    ? "Review inventory sorting, filtering, and item-management workflows."
-                    : selectedIssue.name === "Bugs"
-                    ? "Group similar bug reports and investigate reproducible gameplay problems."
-                    : "Examine connection stability and matchmaking feedback across player reports."}
-                </p>
-                <small>
-                  Suggested from the issue category, not a verified root cause.
-                </small>
-              </div>
-            </div>
-          </div>
-
-          {/* PLAYER REVIEW EVIDENCE
-              BACKEND TODO:
-              These are currently hardcoded examples. Replace them with
-              real review text associated with the selected issue.
-              Proposed endpoint:
-              GET /api/games/{appId}/issues/{issueId}/reviews
-              Return only fields actually stored or available, such as
-              review text, sentiment, and helpful-vote count.
-              Keep account identifiers out of the UI if reviews are
-              intended to remain anonymous in GameScope.
-          */}
-          <div className="issues-card feedback-card">
-            <div className="issues-card-header">
-              <div>
-                <span className="issues-card-label">
-                  PLAYER FEEDBACK
-                </span>
-                <h2>Review Evidence</h2>
-                <p className="issues-section-subtitle">
-                  Example comments associated with this issue.
-                </p>
-              </div>
-              <span className="issues-card-count">
-                {selectedIssue.examples.length} examples
-              </span>
-            </div>
-
-            <div className="issue-examples">
-              {selectedIssue.examples.map((example, index) => (
-                <article className="issue-example" key={index}>
-                  <div className="example-heading">
-                    <span
-                      className={`example-type ${example.type}`}
-                    >
-                      <span>
-                        {example.type === "positive" ? "+" : "−"}
-                      </span>
-                      {example.type === "positive"
-                        ? "Positive"
-                        : "Negative"}
+        {/* DETAILS: ONLY SHOW WHEN A MATCH EXISTS */}
+        {selectedIssue ? (
+          <>
+            <section className="issue-detail-grid">
+              <div className="issues-card issue-detail-card">
+                <div className="issues-card-header">
+                  <div>
+                    <span className="issues-card-label">
+                      ISSUE BREAKDOWN
                     </span>
-
-                    <span className="example-number">
-                      REVIEW EXAMPLE {String(index + 1).padStart(2, "0")}
-                    </span>
+                    <h2>{selectedIssue.name}</h2>
                   </div>
 
-                  <p>“{example.text}”</p>
-                </article>
-              ))}
-            </div>
-
-            <div className="issues-evidence-note">
-              <span>ⓘ</span>
-              <p>
-                These are illustrative examples. Connect the review
-                pipeline to display actual Steam review text here.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ISSUE TRENDS
-            BACKEND TODO:
-            trend currently contains seven hardcoded relative values,
-            not dated review counts. Real trend analysis requires dated
-            reviews or stored analysis snapshots.
-            Proposed endpoint:
-            GET /api/games/{appId}/issues/{issueId}/trends
-            The response should include actual time periods and counts.
-            The chart labels should then use those returned periods.
-        */}
-        <section className="issues-card issues-trend-card">
-          <div className="issues-card-header">
-            <div>
-              <span className="issues-card-label">
-                TREND MONITOR
-              </span>
-              <h2>{selectedIssue.name} activity</h2>
-              <p className="issues-section-subtitle">
-                Illustrative relative activity across seven sample periods.
-              </p>
-            </div>
-
-            <span className="issues-trend-tag">
-              DEMO TREND
-            </span>
-          </div>
-
-          <div
-            className="issues-trend-chart"
-            role="img"
-            aria-label={`Illustrative activity trend for ${selectedIssue.name}`}
-          >
-            {selectedIssue.trend.map((value, index) => (
-              <div className="trend-column" key={index}>
-                <span className="trend-value">{value}</span>
-                <div className="trend-bar-track">
-                  <div
-                    className="trend-bar"
-                    style={{ height: `${value}%` }}
-                  />
+                  <span
+                    className={`priority-badge priority-${selectedIssue.priority.toLowerCase()}`}
+                  >
+                    {selectedIssue.priority} priority
+                  </span>
                 </div>
-                <span className="trend-label">
-                  {["P1", "P2", "P3", "P4", "P5", "P6", "P7"][index]}
+
+                <p className="issue-description">
+                  {selectedIssue.description}
+                </p>
+
+                <div className="issue-status-editor">
+                  <label htmlFor="issue-status-select">
+                    Issue status
+                  </label>
+
+                  <select
+                    id="issue-status-select"
+                    value={statuses[selectedIssue.name] ?? "Detected"}
+                    onChange={(event) =>
+                      changeStatus(
+                        selectedIssue.name,
+                        event.target.value as IssueStatus
+                      )
+                    }
+                  >
+                    {statusesList.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+
+                  <span className="issues-status-note">
+                    Demo mode · changes are not saved after refresh
+                  </span>
+                </div>
+
+                <div className="issue-detail-stats">
+                  <div>
+                    <span>MENTIONS</span>
+                    <strong>
+                      {selectedIssue.mentions.toLocaleString()}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>NEGATIVE</span>
+                    <strong>{getNegativeRate(selectedIssue)}%</strong>
+                  </div>
+
+                  <div>
+                    <span>POSITIVE</span>
+                    <strong>{getPositiveRate(selectedIssue)}%</strong>
+                  </div>
+
+                  <div>
+                    <span>AVG. HELPFUL VOTES</span>
+                    <strong>
+                      {selectedIssue.helpfulVotes.toFixed(1)}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="issue-sentiment">
+                  <div
+                    className="sentiment-bar"
+                    role="img"
+                    aria-label={`${getNegativeRate(selectedIssue)} percent negative and ${getPositiveRate(selectedIssue)} percent positive`}
+                  >
+                    <div
+                      className="sentiment-negative"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (selectedIssue.negative /
+                            Math.max(1, selectedIssue.mentions)) *
+                            100
+                        )}%`,
+                      }}
+                    />
+                    <div
+                      className="sentiment-positive"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (selectedIssue.positive /
+                            Math.max(1, selectedIssue.mentions)) *
+                            100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="sentiment-legend">
+                    <span>
+                      <i className="legend-dot negative-dot" />
+                      Negative feedback
+                    </span>
+                    <span>
+                      <i className="legend-dot positive-dot" />
+                      Positive feedback
+                    </span>
+                  </div>
+                </div>
+
+                <div className="issues-recommendation">
+                  <span className="recommendation-icon" aria-hidden="true">
+                    ✦
+                  </span>
+                  <div>
+                    <strong>Suggested next step</strong>
+                    <p>{getRecommendation(selectedIssue.name)}</p>
+                    <small>
+                      Suggested action, not a verified root cause.
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              {/* BACKEND TODO:
+                  Replace illustrative examples with review evidence
+                  returned for the selected issue and analyzedAppId.
+                  Proposed endpoint:
+                  GET /api/games/{appId}/issues/{issueId}/reviews
+                  Avoid exposing private account identifiers.
+              */}
+              <div className="issues-card feedback-card">
+                <div className="issues-card-header">
+                  <div>
+                    <span className="issues-card-label">
+                      PLAYER FEEDBACK
+                    </span>
+                    <h2>Review Evidence</h2>
+                    <p className="issues-section-subtitle">
+                      Example comments associated with this issue.
+                    </p>
+                  </div>
+
+                  <span className="issues-card-count">
+                    {selectedIssue.examples.length} examples
+                  </span>
+                </div>
+
+                <div className="issue-examples">
+                  {selectedIssue.examples.map((example, index) => (
+                    <article className="issue-example" key={index}>
+                      <div className="example-heading">
+                        <span className={`example-type ${example.type}`}>
+                          <span>
+                            {example.type === "positive" ? "+" : "−"}
+                          </span>
+                          {example.type === "positive"
+                            ? "Positive"
+                            : "Negative"}
+                        </span>
+
+                        <span className="example-number">
+                          EXAMPLE {String(index + 1).padStart(2, "0")}
+                        </span>
+                      </div>
+
+                      <p>“{example.text}”</p>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="issues-evidence-note">
+                  <span aria-hidden="true">ⓘ</span>
+                  <p>
+                    Illustrative examples only. Actual Steam review
+                    evidence will appear when the backend is connected.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* BACKEND TODO:
+                Replace relative demo values with dated counts or
+                snapshots from the backend before describing these
+                as historical trends.
+                Proposed endpoint:
+                GET /api/games/{appId}/issues/{issueId}/trends
+            */}
+            <section className="issues-card issues-trend-card">
+              <div className="issues-card-header">
+                <div>
+                  <span className="issues-card-label">
+                    TREND MONITOR
+                  </span>
+                  <h2>{selectedIssue.name} activity</h2>
+                  <p className="issues-section-subtitle">
+                    Illustrative relative activity across seven sample periods.
+                  </p>
+                </div>
+
+                <span className="issues-trend-tag">DEMO TREND</span>
+              </div>
+
+              <div
+                className="issues-trend-chart"
+                role="img"
+                aria-label={`Illustrative activity trend for ${selectedIssue.name}: ${selectedIssue.trend.join(", ")}`}
+              >
+                {selectedIssue.trend.map((value, index) => (
+                  <div className="trend-column" key={index}>
+                    <span className="trend-value">{value}</span>
+                    <div className="trend-bar-track">
+                      <div
+                        className="trend-bar"
+                        style={{
+                          height: `${Math.max(3, Math.min(100, value))}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="trend-label">
+                      {trendLabels[index] ?? `P${index + 1}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="issues-trend-footer">
+                <span>
+                  <i className="legend-dot trend-dot" />
+                  Relative activity index
+                </span>
+                <span>
+                  Demo values · not historical review counts
                 </span>
               </div>
-            ))}
-          </div>
+            </section>
+          </>
+        ) : (
+          <section className="issues-card issues-detail-empty">
+            <h2>No issue selected</h2>
+            <p>
+              Clear your filters to see issue details, review evidence,
+              and activity trends.
+            </p>
+            <button
+              type="button"
+              className="issues-primary-button"
+              onClick={clearFilters}
+            >
+              Show all issues
+            </button>
+          </section>
+        )}
 
-          <div className="issues-trend-footer">
-            <span>
-              <i className="legend-dot trend-dot" />
-              Relative activity index
-            </span>
-            <span>
-              Replace with dated review counts from your backend for
-              real trend analysis.
-            </span>
-          </div>
-        </section>
-
-        {/* TRACKING SUMMARY */}
+        {/* WORKFLOW SUMMARY */}
         <section className="issues-card issues-tracking-card">
           <div className="issues-card-header">
             <div>
@@ -921,37 +913,40 @@ function Issues({
                 WORKFLOW OVERVIEW
               </span>
               <h2>Issue tracking</h2>
+              <p className="issues-section-subtitle">
+                Select a status to filter the issue list.
+              </p>
             </div>
+
             <span className="issues-card-count">
               {resolvedCount} resolved
             </span>
           </div>
 
           <div className="issues-workflow-grid">
-            {(
-              [
-                "Detected",
-                "Investigating",
-                "In Progress",
-                "Resolved",
-              ] as IssueStatus[]
-            ).map((status) => {
+            {statusesList.map((status) => {
               const count = demoIssues.filter(
-                (issue) => (statuses[issue.name] ?? "Detected") === status
+                (issue) =>
+                  (statuses[issue.name] ?? "Detected") === status
               ).length;
+
+              const isActive = statusFilter === status;
 
               return (
                 <button
                   type="button"
-                  className={`workflow-item workflow-${status
-                    .toLowerCase()
-                    .replace(/\s+/g, "-")}`}
+                  className={`workflow-item workflow-${getStatusClass(status)} ${
+                    isActive ? "workflow-active" : ""
+                  }`}
                   key={status}
-                  onClick={() => setStatusFilter(status)}
+                  onClick={() => setStatusFilter(isActive ? "All" : status)}
+                  aria-pressed={isActive}
                 >
                   <span>{status}</span>
                   <strong>{count}</strong>
-                  <small>Click to filter issues</small>
+                  <small>
+                    {isActive ? "Click to clear filter" : "Filter by status"}
+                  </small>
                 </button>
               );
             })}
@@ -959,9 +954,9 @@ function Issues({
         </section>
 
         <p className="issues-disclaimer">
-          GameScope demo data is used for this view. Counts, priorities,
-          statuses, review examples, and trends are illustrative until
-          connected to the live analysis backend.
+          Demo data is used in this view. Counts, priorities, statuses,
+          review examples, and trends are illustrative until connected
+          to the live analysis backend.
         </p>
       </main>
     </div>
